@@ -1,14 +1,458 @@
+```html
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0; url=https://krunker.io/">
-  <title>Apri Krunker</title>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <title>BWR</title>
+
+    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #unity-container {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        #unity-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border: 0;
+            outline: none;
+            background: #000;
+            touch-action: none;
+        }
+
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+        }
+
+        #loading-content {
+            width: min(90vw, 650px);
+            padding: 20px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+
+        #loading-reaper {
+            display: block;
+            width: min(70vw, 360px);
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto 24px;
+        }
+
+        #loading-disclaimer {
+            font-size: 22px;
+            line-height: 1.5;
+            margin-bottom: 22px;
+        }
+
+        #loading-disclaimer strong {
+            display: block;
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+
+        #loading-text {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 14px;
+        }
+
+        #loading-bar-background {
+            width: 100%;
+            height: 12px;
+            background: #222;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #loading-bar {
+            width: 0%;
+            height: 100%;
+            background: #fff;
+            transition: width 0.15s linear;
+        }
+
+        @media (max-width: 600px) {
+            #loading-reaper {
+                width: min(65vw, 260px);
+            }
+
+            #loading-disclaimer {
+                font-size: 18px;
+            }
+
+            #loading-disclaimer strong {
+                font-size: 27px;
+            }
+
+            #loading-text {
+                font-size: 17px;
+            }
+        }
+    </style>
 </head>
+
 <body>
-  <p>Reindirizzamento a <a href="https://krunker.io/">https://krunker.io/</a>…</p>
-  <script>
-    window.location.replace("https://krunker.io/");
-  </script>
+    <div id="unity-container">
+        <canvas id="unity-canvas"
+                width="1080"
+                height="1920"
+                tabindex="-1"></canvas>
+    </div>
+
+    <div id="loading-screen">
+        <div id="loading-content">
+
+            <img id="loading-reaper"
+                 src="./Reaper.png"
+                 alt="Reaper">
+
+            <div id="loading-disclaimer">
+                <strong>ATTENTION!</strong>
+                This game is currently in Early Access,
+                so you may encounter bugs, glitches,
+                and unfinished optimization.
+            </div>
+
+            <div id="loading-text">Loading...</div>
+
+            <div id="loading-bar-background">
+                <div id="loading-bar"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        "use strict";
+
+        const buildUrl = "./Build/";
+
+        const loaderUrl =
+            buildUrl + "BL_Build.loader.js";
+
+        const config = {
+            dataUrl:
+                buildUrl + "BL_Build.data.unityweb",
+
+            frameworkUrl:
+                buildUrl + "BL_Build.framework.js.unityweb",
+
+            codeUrl:
+                buildUrl + "BL_Build.wasm.unityweb",
+
+            streamingAssetsUrl: "StreamingAssets",
+
+            companyName: "BWR",
+            productName: "BWR",
+            productVersion: "0.1.0",
+
+            matchWebGLToCanvasSize: true,
+
+            devicePixelRatio: Math.min(
+                window.devicePixelRatio || 1,
+                2
+            )
+        };
+
+        const canvas =
+            document.getElementById("unity-canvas");
+
+        const loadingScreen =
+            document.getElementById("loading-screen");
+
+        const loadingBar =
+            document.getElementById("loading-bar");
+
+        const loadingText =
+            document.getElementById("loading-text");
+
+        const loadingImage =
+            document.getElementById("loading-reaper");
+
+        let unityInstance = null;
+        let gameplayRunning = false;
+
+        loadingImage.addEventListener("error", function () {
+            console.warn("Reaper.png non trovato.");
+            loadingImage.style.display = "none";
+        });
+
+        function resizeGame() {
+            const viewport = window.visualViewport;
+
+            const width = viewport
+                ? viewport.width
+                : window.innerWidth;
+
+            const height = viewport
+                ? viewport.height
+                : window.innerHeight;
+
+            if (!width || !height) return;
+
+            canvas.style.width = width + "px";
+            canvas.style.height = height + "px";
+        }
+
+        window.addEventListener("resize", resizeGame);
+
+        window.addEventListener("orientationchange", function () {
+            setTimeout(resizeGame, 150);
+        });
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener(
+                "resize",
+                resizeGame
+            );
+        }
+
+        function gameplayStart() {
+            if (gameplayRunning) return;
+
+            gameplayRunning = true;
+
+            try {
+                if (
+                    typeof CrazyGames !== "undefined" &&
+                    CrazyGames.SDK &&
+                    CrazyGames.SDK.game
+                ) {
+                    CrazyGames.SDK.game.gameplayStart();
+                }
+            } catch (error) {
+                console.warn("gameplayStart:", error);
+            }
+        }
+
+        function gameplayStop() {
+            if (!gameplayRunning) return;
+
+            gameplayRunning = false;
+
+            try {
+                if (
+                    typeof CrazyGames !== "undefined" &&
+                    CrazyGames.SDK &&
+                    CrazyGames.SDK.game
+                ) {
+                    CrazyGames.SDK.game.gameplayStop();
+                }
+            } catch (error) {
+                console.warn("gameplayStop:", error);
+            }
+        }
+
+        async function showRewardedAd() {
+            if (
+                typeof CrazyGames === "undefined" ||
+                !CrazyGames.SDK ||
+                !CrazyGames.SDK.ad
+            ) {
+                return false;
+            }
+
+            gameplayStop();
+
+            try {
+                await CrazyGames.SDK.ad.requestAd("rewarded");
+                return true;
+            } catch (error) {
+                console.warn("Rewarded ad:", error);
+                return false;
+            } finally {
+                gameplayStart();
+            }
+        }
+
+        async function showMidgameAd() {
+            if (
+                typeof CrazyGames === "undefined" ||
+                !CrazyGames.SDK ||
+                !CrazyGames.SDK.ad
+            ) {
+                return false;
+            }
+
+            gameplayStop();
+
+            try {
+                await CrazyGames.SDK.ad.requestAd("midgame");
+                return true;
+            } catch (error) {
+                console.warn("Midgame ad:", error);
+                return false;
+            } finally {
+                gameplayStart();
+            }
+        }
+
+        async function saveGame(key, value) {
+            try {
+                if (
+                    typeof CrazyGames !== "undefined" &&
+                    CrazyGames.SDK &&
+                    CrazyGames.SDK.data
+                ) {
+                    await CrazyGames.SDK.data.setItem(key, value);
+                    return true;
+                }
+            } catch (error) {
+                console.warn("Save error:", error);
+            }
+
+            return false;
+        }
+
+        async function loadGame(key) {
+            try {
+                if (
+                    typeof CrazyGames !== "undefined" &&
+                    CrazyGames.SDK &&
+                    CrazyGames.SDK.data
+                ) {
+                    return await CrazyGames.SDK.data.getItem(key);
+                }
+            } catch (error) {
+                console.warn("Load error:", error);
+            }
+
+            return null;
+        }
+
+        function showLoadError(error) {
+            console.error("Unity loading failed:", error);
+
+            loadingText.textContent =
+                "Loading error. Check console.";
+
+            loadingText.style.color = "#ff5555";
+        }
+
+        async function startUnity() {
+            try {
+                if (
+                    typeof CrazyGames !== "undefined" &&
+                    CrazyGames.SDK
+                ) {
+                    try {
+                        await CrazyGames.SDK.init();
+                        console.log("CrazyGames SDK initialized");
+                    } catch (error) {
+                        console.warn("SDK initialization:", error);
+                    }
+                }
+
+                const script = document.createElement("script");
+
+                script.src = loaderUrl;
+
+                script.onerror = function () {
+                    showLoadError(
+                        "Loader non trovato: " + loaderUrl
+                    );
+                };
+
+                script.onload = async function () {
+                    if (typeof createUnityInstance !== "function") {
+                        showLoadError(
+                            "createUnityInstance non disponibile."
+                        );
+                        return;
+                    }
+
+                    try {
+                        unityInstance = await createUnityInstance(
+                            canvas,
+                            config,
+                            function (progress) {
+                                const percentage =
+                                    Math.round(progress * 100);
+
+                                loadingBar.style.width =
+                                    percentage + "%";
+
+                                loadingText.textContent =
+                                    "Loading " + percentage + "%";
+                            }
+                        );
+
+                        resizeGame();
+
+                        loadingBar.style.width = "100%";
+                        loadingText.textContent = "Ready!";
+
+                        loadingScreen.style.display = "none";
+
+                        gameplayStart();
+
+                        console.log(
+                            "BWR Unity started successfully."
+                        );
+                    } catch (error) {
+                        showLoadError(error);
+                    }
+                };
+
+                document.body.appendChild(script);
+
+            } catch (error) {
+                showLoadError(error);
+            }
+        }
+
+        window.addEventListener("error", function (event) {
+            console.error(
+                "JavaScript error:",
+                event.message,
+                event.filename,
+                event.lineno
+            );
+        });
+
+        window.addEventListener(
+            "unhandledrejection",
+            function (event) {
+                console.error(
+                    "Unhandled promise rejection:",
+                    event.reason
+                );
+            }
+        );
+
+        resizeGame();
+        startUnity();
+    </script>
 </body>
 </html>
+```
